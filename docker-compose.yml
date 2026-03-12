@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    build: .
+    container_name: clawmon-dashboard
+    restart: unless-stopped
+    volumes:
+      - ./clawmon.db:/data/clawmon.db
+    environment:
+      - DB_PATH=/data/clawmon.db
+    expose:
+      - "8000"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: clawmon-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - dashboard
+

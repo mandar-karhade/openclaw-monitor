@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawMon - OpenClaw Exposure Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>CLAWMON</h1>
+            <span class="subtitle">OpenClaw Exposure Monitor</span>
+        </div>
+        <div class="header-right">
+            <span id="lastRefresh" class="last-refresh"></span>
+            <button id="autoRefreshToggle" class="toggle-btn active" onclick="toggleAutoRefresh()">
+                <span class="pulse" id="pulseIndicator"></span>
+                <span id="toggleLabel">AUTO</span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Heatmap + KPI sidebar -->
+        <section class="hero-row">
+            <div class="card map-card hero-map">
+                <h2>Global Exposure Heatmap</h2>
+                <div id="map"></div>
+            </div>
+            <div class="kpi-sidebar">
+                <div class="kpi-card critical">
+                    <div class="kpi-value" id="kpiExposed">{{ data.summary.unsecured }}</div>
+                    <div class="kpi-label">Exposed</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Provider + Country charts side by side -->
+        <section class="row-2">
+            <div class="card">
+                <h2>Hosting Provider Breakdown</h2>
+                <canvas id="providerChart"></canvas>
+            </div>
+            <div class="card">
+                <h2>Top Countries</h2>
+                <canvas id="countryChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Instance table -->
+        <section class="card table-card">
+            <div class="table-header">
+                <h2>Discovered Instances</h2>
+                <input type="text" id="tableSearch" placeholder="Filter..." />
+            </div>
+            <div class="table-wrap">
+                <table id="instanceTable">
+                    <thead>
+                        <tr>
+                            <th>IP (masked)</th>
+                            <th>Port</th>
+                            <th>Status</th>
+                            <th>Country</th>
+                            <th>City</th>
+                            <th>Provider</th>
+                            <th>Version</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inst in data.recent_instances %}
+                        <tr class="status-{{ inst.secured }}">
+                            <td class="mono">{{ inst.ip_masked }}</td>
+                            <td>{{ inst.port }}</td>
+                            <td><span class="badge badge-{{ inst.secured }}">{{ inst.secured }}</span></td>
+                            <td>{{ inst.country or '-' }}</td>
+                            <td>{{ inst.city or '-' }}</td>
+                            <td>{{ inst.provider or '-' }}</td>
+                            <td>{{ inst.version or '-' }}</td>
+                            <td class="mono">{{ inst.last_seen[:19] if inst.last_seen else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <span id="pageInfo" class="page-info"></span>
+                <div class="page-controls">
+                    <button id="prevPage" class="page-btn" onclick="changePage(-1)">&lt; PREV</button>
+                    <button id="nextPage" class="page-btn" onclick="changePage(1)">NEXT &gt;</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <span>ClawMon v0.1 - Exposure data from direct port scanning. IPs masked for responsible disclosure.</span>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        const DATA = {{ data_json | safe }};
+
+        // --- Heatmap ---
+        const map = L.map('map', {
+            center: [30, 10],
+            zoom: 2,
+            zoomControl: true,
+            attributionControl: false,
+        });
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 18,
+        }).addTo(map);
+
+        const heatPoints = DATA.heatmap_points
+            .filter(p => p.latitude && p.longitude)
+            .map(p => [
+                p.latitude,
+                p.longitude,
+                p.secured === 'unsecured' ? 1.0 : 0.4
+            ]);
+
+        if (heatPoints.length > 0) {
+            L.heatLayer(heatPoints, {
+                radius: 20,
+                blur: 15,
+                maxZoom: 10,
+                gradient: {
+                    0.2: '#1a1a2e',
+                    0.4: '#16213e',
+                    0.6: '#e94560',
+                    0.8: '#ff6b6b',
+                    1.0: '#ff0000'
+                }
+            }).addTo(map);
+
+            // Also add circle markers
+            DATA.heatmap_points
+                .filter(p => p.latitude && p.longitude)
+                .forEach(p => {
+                    const color = p.secured === 'unsecured' ? '#ff4444' : '#44ff44';
+                    L.circleMarker([p.latitude, p.longitude], {
+                        radius: 5,
+                        fillColor: color,
+                        color: color,
+                        weight: 1,
+                        opacity: 0.8,
+                        fillOpacity: 0.6,
+                    }).addTo(map);
+                });
+        }
+
+        // --- Chart defaults ---
+        Chart.defaults.color = '#a0a0b0';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+
+        // --- Provider bar chart ---
+        const providerData = DATA.by_provider.slice(0, 10);
+        new Chart(document.getElementById('providerChart'), {
+            type: 'bar',
+            data: {
+                labels: providerData.map(p => {
+                    const name = p.provider;
+                    return name.length > 25 ? name.substring(0, 22) + '...' : name;
+                }),
+                datasets: [{
+                    data: providerData.map(p => p.count),
+                    backgroundColor: '#e94560',
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+
+        // --- Country bar chart ---
+        const countryData = DATA.by_country.slice(0, 10);
+        new Chart(document.getElementById('countryChart'), {
+            type: 'bar',
+            data: {
+                labels: countryData.map(c => c.country),
+                datasets: [{
+                    data: countryData.map(c => c.count),
+                    backgroundColor: '#e94560',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: { display: false }, beginAtZero: true }
+                }
+            }
+        });
+
+        // --- Table pagination ---
+        const PAGE_SIZE = 25;
+        let currentPage = 0;
+        let allInstances = DATA.recent_instances;
+        let filteredInstances = allInstances;
+
+        function renderTable() {
+            const start = currentPage * PAGE_SIZE;
+            const page = filteredInstances.slice(start, start + PAGE_SIZE);
+            const tbody = document.querySelector('#instanceTable tbody');
+            tbody.innerHTML = page.map(inst => `<tr class="status-${inst.secured}">
+                <td class="mono">${inst.ip_masked}</td>
+                <td>${inst.port}</td>
+                <td><span class="badge badge-${inst.secured}">${inst.secured}</span></td>
+                <td>${inst.country || '-'}</td>
+                <td>${inst.city || '-'}</td>
+                <td>${inst.provider || '-'}</td>
+                <td>${inst.version || '-'}</td>
+                <td class="mono">${inst.last_seen ? inst.last_seen.substring(0, 19) : '-'}</td>
+            </tr>`).join('');
+
+            const totalPages = Math.ceil(filteredInstances.length / PAGE_SIZE) || 1;
+            document.getElementById('pageInfo').textContent =
+                `${start + 1}-${Math.min(start + PAGE_SIZE, filteredInstances.length)} of ${filteredInstances.length}`;
+            document.getElementById('prevPage').disabled = currentPage === 0;
+            document.getElementById('nextPage').disabled = currentPage >= totalPages - 1;
+        }
+
+        function changePage(delta) {
+            const totalPages = Math.ceil(filteredInstances.length / PAGE_SIZE) || 1;
+            currentPage = Math.max(0, Math.min(totalPages - 1, currentPage + delta));
+            renderTable();
+        }
+
+        renderTable();
+
+        // --- Table filter ---
+        document.getElementById('tableSearch').addEventListener('input', function() {
+            const filter = this.value.toLowerCase();
+            if (filter) {
+                filteredInstances = allInstances.filter(inst => {
+                    const text = [inst.ip_masked, inst.port, inst.secured, inst.country, inst.city, inst.provider, inst.version]
+                        .join(' ').toLowerCase();
+                    return text.includes(filter);
+                });
+            } else {
+                filteredInstances = allInstances;
+            }
+            currentPage = 0;
+            renderTable();
+        });
+
+        // --- Auto-refresh every 10s ---
+        let providerChartObj = Chart.getChart('providerChart');
+        let countryChartObj = Chart.getChart('countryChart');
+        let heatLayer = null;
+        let markerGroup = L.layerGroup().addTo(map);
+
+        // Store initial heat layer reference
+        map.eachLayer(l => { if (l._heat) heatLayer = l; });
+
+        async function refreshDashboard() {
+            try {
+                const resp = await fetch('/api/stats');
+                if (!resp.ok) return;
+                const data = await resp.json();
+
+                // Update KPI
+                const kpi = document.getElementById('kpiExposed');
+                const prev = parseInt(kpi.textContent) || 0;
+                kpi.textContent = data.summary.unsecured;
+
+                // Flash if new instances found
+                if (data.summary.unsecured > prev) {
+                    kpi.style.color = '#fff';
+                    setTimeout(() => { kpi.style.color = ''; }, 1500);
+                }
+
+                // Update provider chart
+                const pd = data.by_provider.slice(0, 10);
+                providerChartObj.data.labels = pd.map(p => {
+                    const n = p.provider;
+                    return n.length > 25 ? n.substring(0, 22) + '...' : n;
+                });
+                providerChartObj.data.datasets[0].data = pd.map(p => p.count);
+                providerChartObj.update('none');
+
+                // Update country chart
+                const cd = data.by_country.slice(0, 10);
+                countryChartObj.data.labels = cd.map(c => c.country);
+                countryChartObj.data.datasets[0].data = cd.map(c => c.count);
+                countryChartObj.update('none');
+
+                // Update heatmap
+                const newPoints = data.heatmap_points
+                    .filter(p => p.latitude && p.longitude);
+
+                if (heatLayer) map.removeLayer(heatLayer);
+                markerGroup.clearLayers();
+
+                if (newPoints.length > 0) {
+                    heatLayer = L.heatLayer(
+                        newPoints.map(p => [p.latitude, p.longitude, p.secured === 'unsecured' ? 1.0 : 0.4]),
+                        { radius: 20, blur: 15, maxZoom: 10, gradient: { 0.2:'#1a1a2e', 0.4:'#16213e', 0.6:'#e94560', 0.8:'#ff6b6b', 1.0:'#ff0000' } }
+                    ).addTo(map);
+
+                    newPoints.forEach(p => {
+                        const color = p.secured === 'unsecured' ? '#ff4444' : '#44ff44';
+                        L.circleMarker([p.latitude, p.longitude], {
+                            radius: 5, fillColor: color, color: color,
+                            weight: 1, opacity: 0.8, fillOpacity: 0.6,
+                        }).addTo(markerGroup);
+                    });
+                }
+
+                // Update table data and re-render with pagination
+                allInstances = data.recent_instances;
+                const filter = document.getElementById('tableSearch').value.toLowerCase();
+                if (filter) {
+                    filteredInstances = allInstances.filter(inst => {
+                        const text = [inst.ip_masked, inst.port, inst.secured, inst.country, inst.city, inst.provider, inst.version]
+                            .join(' ').toLowerCase();
+                        return text.includes(filter);
+                    });
+                } else {
+                    filteredInstances = allInstances;
+                }
+                renderTable();
+
+                // Update last-refreshed indicator
+                document.getElementById('lastRefresh').textContent =
+                    'Updated ' + new Date().toLocaleTimeString();
+
+            } catch (e) {
+                console.warn('Auto-refresh failed:', e);
+            }
+        }
+
+        let autoRefreshEnabled = true;
+        let refreshInterval = setInterval(refreshDashboard, 10000);
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const btn = document.getElementById('autoRefreshToggle');
+            const pulse = document.getElementById('pulseIndicator');
+            const label = document.getElementById('toggleLabel');
+
+            if (autoRefreshEnabled) {
+                refreshInterval = setInterval(refreshDashboard, 10000);
+                btn.classList.add('active');
+                pulse.style.display = '';
+                label.textContent = 'AUTO';
+                refreshDashboard();
+            } else {
+                clearInterval(refreshInterval);
+                btn.classList.remove('active');
+                pulse.style.display = 'none';
+                label.textContent = 'PAUSED';
+            }
+        }
+    </script>
+</body>
+</html>
