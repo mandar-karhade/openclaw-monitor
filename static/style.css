@@ -1,14 +1,13 @@
 :root {
-    --bg-primary: #0a0a1a;
-    --bg-card: #111128;
-    --bg-card-hover: #16163a;
-    --border: #1a1a3e;
-    --text-primary: #e0e0f0;
-    --text-secondary: #8888aa;
-    --accent-red: #e94560;
-    --accent-green: #0cce6b;
-    --accent-blue: #0f3460;
-    --accent-dim: #555577;
+    --bg-primary: #1a1a1a;
+    --bg-card: #242424;
+    --bg-card-hover: #2c2c2c;
+    --border: #363636;
+    --text-primary: #dcdcdc;
+    --text-secondary: #999;
+    --accent-red: #da3633;
+    --accent-green: #3fb950;
+    --accent-dim: #666;
 }
 
 * {
@@ -20,7 +19,7 @@
 body {
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     min-height: 100vh;
@@ -37,18 +36,15 @@ header {
 }
 
 header h1 {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: 4px;
-    color: var(--accent-red);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .subtitle {
     color: var(--text-secondary);
-    font-size: 12px;
-    margin-left: 12px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
+    font-size: 13px;
+    margin-left: 8px;
 }
 
 .header-right {
@@ -72,11 +68,9 @@ header h1 {
     padding: 4px 10px;
     color: var(--text-secondary);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: color 0.15s, border-color 0.15s;
 }
 
 .toggle-btn.active {
@@ -89,23 +83,10 @@ header h1 {
 }
 
 .pulse {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--accent-green);
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--accent-green); }
-    50% { opacity: 0.5; box-shadow: 0 0 12px var(--accent-green); }
-}
-
-.live-text {
-    font-size: 11px;
-    color: var(--accent-green);
-    letter-spacing: 2px;
-    font-weight: 600;
 }
 
 /* --- Main layout --- */
@@ -118,57 +99,46 @@ main {
     gap: 20px;
 }
 
-/* --- Hero row: map + KPI sidebar --- */
-.hero-row {
+/* --- Map row with count --- */
+.map-row {
     display: grid;
-    grid-template-columns: 1fr 120px;
+    grid-template-columns: 1fr 100px;
     gap: 16px;
 }
 
-.hero-map {
-    min-height: 420px;
+.map-panel {
+    min-height: 400px;
 }
 
-.hero-map #map {
-    height: 380px;
+.map-panel #map {
+    height: 360px;
 }
 
-.kpi-sidebar {
+.count-panel {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-self: start;
 }
 
-.kpi-card {
+.count-box {
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 24px 16px;
+    border: 1px solid var(--accent-red);
+    border-radius: 6px;
+    padding: 16px 12px;
     text-align: center;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
 }
 
-.kpi-card.critical {
-    border-color: var(--accent-red);
-    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(233, 69, 96, 0.1) 100%);
-}
-
-.kpi-value {
-    font-size: 48px;
-    font-weight: 700;
-    line-height: 1.1;
+.count-value {
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.2;
     color: var(--accent-red);
 }
 
-.kpi-label {
-    font-size: 10px;
+.count-label {
+    font-size: 11px;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-top: 8px;
+    margin-top: 4px;
 }
 
 /* --- Cards --- */
@@ -180,11 +150,9 @@ main {
 }
 
 .card h2 {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 2px;
     margin-bottom: 16px;
 }
 
@@ -211,7 +179,8 @@ main {
     background: var(--bg-primary);
 }
 
-.leaflet-control-zoom a {
+.leaflet-control-zoom a,
+.leaflet-bar a {
     background: var(--bg-card) !important;
     color: var(--text-primary) !important;
     border-color: var(--border) !important;
@@ -265,9 +234,7 @@ th {
     padding: 10px 12px;
     color: var(--text-secondary);
     font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 12px;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
@@ -290,30 +257,23 @@ tr:hover td {
 /* --- Badges --- */
 .badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border-radius: 3px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 12px;
 }
 
 .badge-unsecured {
-    background: rgba(233, 69, 96, 0.15);
+    background: rgba(218, 54, 51, 0.15);
     color: var(--accent-red);
-    border: 1px solid rgba(233, 69, 96, 0.3);
 }
 
 .badge-secured {
-    background: rgba(12, 206, 107, 0.1);
+    background: rgba(63, 185, 80, 0.15);
     color: var(--accent-green);
-    border: 1px solid rgba(12, 206, 107, 0.3);
 }
 
 .badge-unknown {
-    background: rgba(85, 85, 119, 0.15);
     color: var(--accent-dim);
-    border: 1px solid rgba(85, 85, 119, 0.3);
 }
 
 /* --- Pagination --- */
@@ -344,11 +304,9 @@ tr:hover td {
     padding: 4px 12px;
     color: var(--text-secondary);
     font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: color 0.15s, border-color 0.15s;
 }
 
 .page-btn:hover:not(:disabled) {
@@ -376,10 +334,10 @@ footer {
     .row-2 {
         grid-template-columns: 1fr;
     }
-    .hero-row {
+    .map-row {
         grid-template-columns: 1fr;
     }
-    .kpi-sidebar {
+    .count-panel {
         flex-direction: row;
     }
 }

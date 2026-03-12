@@ -10,7 +10,7 @@
 <body>
     <header>
         <div class="header-left">
-            <h1>CLAWMON</h1>
+            <h1>ClawMon</h1>
             <span class="subtitle">OpenClaw Exposure Monitor</span>
         </div>
         <div class="header-right">
@@ -23,28 +23,26 @@
     </header>
 
     <main>
-        <!-- Heatmap + KPI sidebar -->
-        <section class="hero-row">
-            <div class="card map-card hero-map">
-                <h2>Global Exposure Heatmap</h2>
+        <section class="map-row">
+            <div class="card map-card map-panel">
+                <h2>Exposure map</h2>
                 <div id="map"></div>
             </div>
-            <div class="kpi-sidebar">
-                <div class="kpi-card critical">
-                    <div class="kpi-value" id="kpiExposed">{{ data.summary.unsecured }}</div>
-                    <div class="kpi-label">Exposed</div>
+            <div class="count-panel">
+                <div class="count-box">
+                    <div class="count-value" id="kpiExposed">{{ data.summary.unsecured }}</div>
+                    <div class="count-label">Exposed</div>
                 </div>
             </div>
         </section>
 
-        <!-- Provider + Country charts side by side -->
         <section class="row-2">
             <div class="card">
-                <h2>Hosting Provider Breakdown</h2>
+                <h2>By provider</h2>
                 <canvas id="providerChart"></canvas>
             </div>
             <div class="card">
-                <h2>Top Countries</h2>
+                <h2>By country</h2>
                 <canvas id="countryChart"></canvas>
             </div>
         </section>
@@ -96,19 +94,21 @@
     </main>
 
     <footer>
-        <span>ClawMon v0.1 - Exposure data from direct port scanning. IPs masked for responsible disclosure.</span>
+        <span>IPs masked for responsible disclosure.</span>
     </footer>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         const DATA = {{ data_json | safe }};
 
-        // --- Heatmap ---
+        // --- Map ---
+        const DEFAULT_CENTER = [30, 10];
+        const DEFAULT_ZOOM = 2;
+
         const map = L.map('map', {
-            center: [30, 10],
-            zoom: 2,
+            center: DEFAULT_CENTER,
+            zoom: DEFAULT_ZOOM,
             zoomControl: true,
             attributionControl: false,
         });
@@ -117,47 +117,39 @@
             maxZoom: 18,
         }).addTo(map);
 
-        const heatPoints = DATA.heatmap_points
-            .filter(p => p.latitude && p.longitude)
-            .map(p => [
-                p.latitude,
-                p.longitude,
-                p.secured === 'unsecured' ? 1.0 : 0.4
-            ]);
-
-        if (heatPoints.length > 0) {
-            L.heatLayer(heatPoints, {
-                radius: 20,
-                blur: 15,
-                maxZoom: 10,
-                gradient: {
-                    0.2: '#1a1a2e',
-                    0.4: '#16213e',
-                    0.6: '#e94560',
-                    0.8: '#ff6b6b',
-                    1.0: '#ff0000'
-                }
-            }).addTo(map);
-
-            // Also add circle markers
-            DATA.heatmap_points
-                .filter(p => p.latitude && p.longitude)
-                .forEach(p => {
-                    const color = p.secured === 'unsecured' ? '#ff4444' : '#44ff44';
-                    L.circleMarker([p.latitude, p.longitude], {
-                        radius: 5,
-                        fillColor: color,
-                        color: color,
-                        weight: 1,
-                        opacity: 0.8,
-                        fillOpacity: 0.6,
-                    }).addTo(map);
+        // Reset zoom control
+        L.Control.ResetZoom = L.Control.extend({
+            onAdd: function() {
+                const btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                btn.innerHTML = '<a href="#" title="Reset zoom" style="font-size:14px;line-height:26px;width:26px;height:26px;display:block;text-align:center;text-decoration:none;">&#8634;</a>';
+                btn.querySelector('a').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
                 });
-        }
+                return btn;
+            }
+        });
+        new L.Control.ResetZoom({ position: 'topleft' }).addTo(map);
+
+        const markerGroup = L.layerGroup().addTo(map);
+
+        DATA.heatmap_points
+            .filter(p => p.latitude && p.longitude)
+            .forEach(p => {
+                const color = p.secured === 'unsecured' ? '#da3633' : '#3fb950';
+                L.circleMarker([p.latitude, p.longitude], {
+                    radius: 5,
+                    fillColor: color,
+                    color: color,
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.6,
+                }).addTo(markerGroup);
+            });
 
         // --- Chart defaults ---
-        Chart.defaults.color = '#a0a0b0';
-        Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+        Chart.defaults.color = '#7d8590';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.04)';
 
         // --- Provider bar chart ---
         const providerData = DATA.by_provider.slice(0, 10);
@@ -170,7 +162,7 @@
                 }),
                 datasets: [{
                     data: providerData.map(p => p.count),
-                    backgroundColor: '#e94560',
+                    backgroundColor: '#da3633',
                 }]
             },
             options: {
@@ -193,7 +185,7 @@
                 labels: countryData.map(c => c.country),
                 datasets: [{
                     data: countryData.map(c => c.count),
-                    backgroundColor: '#e94560',
+                    backgroundColor: '#da3633',
                 }]
             },
             options: {
@@ -262,11 +254,6 @@
         // --- Auto-refresh every 10s ---
         let providerChartObj = Chart.getChart('providerChart');
         let countryChartObj = Chart.getChart('countryChart');
-        let heatLayer = null;
-        let markerGroup = L.layerGroup().addTo(map);
-
-        // Store initial heat layer reference
-        map.eachLayer(l => { if (l._heat) heatLayer = l; });
 
         async function refreshDashboard() {
             try {
@@ -300,27 +287,17 @@
                 countryChartObj.data.datasets[0].data = cd.map(c => c.count);
                 countryChartObj.update('none');
 
-                // Update heatmap
-                const newPoints = data.heatmap_points
-                    .filter(p => p.latitude && p.longitude);
-
-                if (heatLayer) map.removeLayer(heatLayer);
+                // Update map markers
                 markerGroup.clearLayers();
-
-                if (newPoints.length > 0) {
-                    heatLayer = L.heatLayer(
-                        newPoints.map(p => [p.latitude, p.longitude, p.secured === 'unsecured' ? 1.0 : 0.4]),
-                        { radius: 20, blur: 15, maxZoom: 10, gradient: { 0.2:'#1a1a2e', 0.4:'#16213e', 0.6:'#e94560', 0.8:'#ff6b6b', 1.0:'#ff0000' } }
-                    ).addTo(map);
-
-                    newPoints.forEach(p => {
-                        const color = p.secured === 'unsecured' ? '#ff4444' : '#44ff44';
+                data.heatmap_points
+                    .filter(p => p.latitude && p.longitude)
+                    .forEach(p => {
+                        const color = p.secured === 'unsecured' ? '#da3633' : '#3fb950';
                         L.circleMarker([p.latitude, p.longitude], {
                             radius: 5, fillColor: color, color: color,
                             weight: 1, opacity: 0.8, fillOpacity: 0.6,
                         }).addTo(markerGroup);
                     });
-                }
 
                 // Update table data and re-render with pagination
                 allInstances = data.recent_instances;
